@@ -309,6 +309,43 @@ func (w *writer) commitBlob(location, digest string) error {
 	return transport.CheckError(resp, http.StatusCreated)
 }
 
+type BufferedStream struct {
+	r io.ReadCloser
+	buf *bytes.Buffer
+	closed bool
+	targetSize int
+}
+
+func NewBufferedStream(r io.ReadCloser, tSize int) *BufferedStream {
+	return &BufferedStream{
+		r: r,
+		buf: bytes.NewBuffer(nil),
+		closed: false,
+		targetSize: tSize,
+	}
+}
+
+func (b *BufferedStream) Read(p []byte) (n int, err error) {
+	rBuf := make([]byte, b.targetSize)
+	for ; b.buf.Len() < b.targetSize && !b.closed ; {
+		m, rErr := b.r.Read(rBuf)
+		if rErr == io.EOF {
+			b.closed = true
+		} else if rErr != nil {
+			return 0, rErr
+		}
+		b.buf.Write(rBuf[:m])
+	}
+	n, err = b.buf.Read(p)
+
+	logs.Warn.Printf("Reading %d bytes from Buffered Stream", n)
+	return n, err
+}
+
+func (b *BufferedStream) Close() error {
+	return b.r.Close()
+}
+
 // uploadOne performs a complete upload of a single layer.
 func (w *writer) uploadOne(l v1.Layer) error {
 	var from, mount string
@@ -362,7 +399,7 @@ func (w *writer) uploadOne(l v1.Layer) error {
 		if err != nil {
 			return err
 		}
-		location, err = w.streamBlob(ctx, blob, location)
+		location, err = w.streamBlob(ctx, NewBufferedStream(blob, 256), location)
 		if err != nil {
 			return err
 		}

@@ -17,9 +17,8 @@ package gzip
 import (
 	"bytes"
 	"compress/gzip"
-	"io"
-
 	"github.com/google/go-containerregistry/pkg/v1/internal/and"
+	"io"
 )
 
 var gzipMagicHeader = []byte{'\x1f', '\x8b'}
